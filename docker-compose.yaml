@@ -1,0 +1,168 @@
+
+
+services:
+
+  ############################################################
+  # APPLICATION PRINCIPALE OPENCAPTURE
+  ############################################################
+  opencapture:
+    build:
+      context: .
+    image: docker_opencapture
+    container_name: opencapture
+    
+    ports:
+      - "8443:443"
+      - "5678:5678"     
+
+    ##########################################################
+    # VARIABLES ENVIRONNEMENT
+    ##########################################################
+    environment:    
+      MPLCONFIGDIR: /tmp/matplotlib
+      XDG_CACHE_HOME: /tmp
+      XDG_CONFIG_HOME: /tmp
+      YOLO_CONFIG_DIR: /opt/opencapture_runtime/ultralytics
+      HOME: /tmp
+      FONTCONFIG_PATH: /etc/fonts
+      FONTCONFIG_FILE: /etc/fonts/fonts.conf
+      # log de performance.
+      PERF_LOG_PATH: /var/www/html/opencapture/custom/edissyum/data/log/performance/performance.log
+
+      ########################################################
+      # 🔥 AJOUT POUR PROMETHEUS (OPTIONNEL MAIS RECOMMANDÉ)
+      ########################################################
+      # PYTHONUNBUFFERED: "1"
+      # PYTHONNOUSERSITE: "1"
+
+    ##########################################################
+    # VOLUMES (WINDOWS → CONTAINER)
+    ##########################################################
+    volumes:      
+      - "c:/local_env/opencapture:/var/www/html/opencapture"
+      - "c:/local_env/opencapture/docs/docservers:/var/docservers/opencapture/edissyum"
+      - "c:/local_env/opencapture/docs/share:/var/share"
+      - ./apache/opencapture.conf:/etc/apache2/sites-available/opencapture.conf
+      - ./apache/cert.pem:/etc/cert.pem
+      - ./apache/key.pem:/etc/key.pem
+      - ./supervisor/supervisord.conf:/etc/supervisor/supervisord.conf
+      - ./supervisor/conf.d/:/etc/supervisor/conf.d/
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml    
+    depends_on:
+      - postgres
+    networks:
+      - custom_network    
+  
+  ############################################################
+  # POSTGRESQL (SERVICE SÉPARÉ)
+  ############################################################
+  postgres:
+    image: postgres:15
+    container_name: opencapture_postgres
+
+    restart: always
+
+    environment:
+      POSTGRES_DB: opencapture_edissyum
+      POSTGRES_USER: edissyum
+      POSTGRES_PASSWORD: edissyum
+    
+    ports:
+      - "5432:5432"
+    
+    volumes:
+      - opencapture_postgres_data:/var/lib/postgresql/15/main      
+      - ./postgres/pg_hba.conf:/etc/postgresql/15/main/pg_hba.conf
+      - ./postgres/postgresql.conf:/etc/postgresql/15/main/postgresql.conf
+      # - ./postgres/init/init-users.sql:/docker-entrypoint-initdb.d/init-users.sql
+    
+    networks:
+      - custom_network
+  
+  ############################################################
+  # PROMETHEUS - COLLECTE DES MÉTRIQUES
+  ############################################################
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+
+    ##########################################################
+    # CONFIGURATION PROMETHEUS
+    ##########################################################
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    
+    ports:
+      - "9090:9090"
+    
+    networks:
+      - custom_network
+
+  ############################################################
+  # GRAFANA - DASHBOARDS
+  ############################################################
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    
+    ports:
+      - "3000:3000"
+
+    ##########################################################
+    # PERSISTENCE + AUTO CONFIG DATASOURCE
+    ##########################################################
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+    
+    networks:
+      - custom_network
+
+  ############################################################
+  # NODE EXPORTER - CPU / RAM / DISQUE
+  ############################################################
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    
+    ports:
+      - "9100:9100"
+    
+    networks:
+      - custom_network
+
+  ############################################################
+  # CADVISOR - MÉTRIQUES DOCKER
+  ############################################################
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    
+    ports:
+      - "8080:8080"
+
+    ##########################################################
+    # ACCÈS AUX DONNÉES DOCKER
+    ##########################################################
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+
+    networks:
+      - custom_network
+
+############################################################
+# NETWORK
+############################################################
+networks:
+  custom_network:
+    external: true
+    
+############################################################
+# VOLUMES
+############################################################
+volumes:
+  opencapture_postgres_data:
+  grafana_data:

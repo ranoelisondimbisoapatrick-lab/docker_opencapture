@@ -1,0 +1,1 @@
+*/5 * * * * root /opt/opencapture-venv/bin/python /var/www/html/opencapture/src/backend/scripts/phase2_scheduler.py >> /var/log/cron/phase2.log 2>&1
